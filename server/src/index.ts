@@ -1,4 +1,5 @@
 import { Server, Socket } from 'socket.io'
+import type { SocketId } from "socket.io-adapter";
 import * as dotenv from 'dotenv';
 
 /*** Load config ***/
@@ -18,102 +19,157 @@ const io = new Server(port, {
 console.log("Server started on port: " + port);
 
 io.on("connection", socket => {
-    processConnection(socket);
 
-    socket.on("message", processMessage);
-    socket.on("close", processClose);
+    // Host endpoints
+    socket.on("init host", (d, c) => createLobby(socket, d, c));   
+    socket.on("host candidate", (d, c) => handleHostCandidate(socket, d, c));
+
+    // Client endpoints
+    socket.on("client offer", (d, c) => handleClientOffer(socket, d, c));
+    socket.on("client candidate", (d, c) => handleClientCandidate(socket, d, c));
+
+    // Handle disconnects
+    socket.on("disconnect", () => handleDisconnect(socket));
+
 });
 
-function processConnection(socket: Socket) {
-    console.log("Connection initiated");
+// Initialize a lobby
+function createLobby(socket: Socket, data: any, callback: Function) {
 
-    socket.emit("hello", "turd");
+    let { lobbyId } = data;
+
+    console.log(`Creating new lobby. [host=${socket.id}] [lobby=${lobbyId}]`);
+
+    if(lobbyId == null) {
+        console.warn(`Bad request in 'create lobby'.`)
+        return callback({ ok: false, data: "Bad request." });
+    }
+
+    if(lobbyMap.has(lobbyId)) {
+        console.warn(`Bad request in 'create lobby'.`)
+        return callback({ ok: false, data: "Lobby name already in use." });
+    }
+
+    if(hostMap.has(socket.id)) {
+        console.warn(`Bad request in 'create lobby'.`)
+        return callback({ ok: false, data: "A host may only have one lobby." });
+    }
+
+    // Initialize lobby information
+    const lobbyInfo = {
+        id: lobbyId,
+        clientCount: 0,
+        hostSocket: socket,
+        clientSockets: [],
+    };
+
+    hostMap.set(socket.id, lobbyInfo);
+    lobbyMap.set(lobbyId, lobbyInfo);
+
+    return callback({ ok: true, data: null });
 }
 
-function processMessage(data: any) {
-    console.log(`Message received: ${data}`);
+// Stores new ice candidates and broadcasts them to currently connecting clients
+function handleHostCandidate(socket: Socket, data: any, callback: Function) {
+    return callback({ ok: false, data: "Not implemented." });
+
+    // const { candidate } = data;
+    // const lobbyInfo = hostMap.get(socket.id);
+    
+    // console.log(`Adding new ice candidate. [host=${socket.id}] [lobby=${lobbyInfo?.id}]`);
+
+    // if(candidate == null) {
+    //     console.warn(`Bad request in 'add candidate'.`)
+    //     return callback({ ok: false, data: "Bad request." });
+    // }
+
+    // if(lobbyInfo == null) {
+    //     console.warn(`Bad request in 'add candidate'.`)
+    //     return callback({ ok: false, data: "No lobby associated with this socket." });
+    // }
+
+    // // Broadcast candidate to currently connecting clients
+    // for(const client of lobbyInfo.clientSockets)
+    //     client.emit("add candidate", candidate);
+
+    // return callback({ ok: true, data: null });
 }
 
-function processClose() {
-    console.log("Connection closed");
+async function handleClientOffer(socket: Socket, data: any, callback: Function) {
+
+    let { lobbyId, sessionDescription } = data;
+    let lobbyInfo = lobbyMap.get(lobbyId);
+
+    console.log(`Initiating connection negotiation. [client=${socket.id}] [lobby=${lobbyId}]`);
+
+    if(lobbyId == null || sessionDescription == null) {
+        console.warn(`Bad request in 'client offer'.`)
+        return callback({ ok: false, data: "Bad request." });
+    }
+
+    if(clientMap.has(socket.id)) {
+        console.warn(`Bad request in 'client offer'.`)
+        return callback({ ok: false, data: "Client is already connecting to a lobby." });
+    }
+
+    if(lobbyInfo == null) {
+        console.warn(`Bad request in 'client offer'.`)
+        return callback({ ok: false, data: "Lobby name not found." });
+    }
+
+    clientMap.set(socket.id, lobbyInfo);
+
+    const request = { socketId: socket.id, sessionDescription };
+    const response = await lobbyInfo.hostSocket.emitWithAck("client offer", request);
+
+    return callback(response);
 }
 
-// app.use(cors(corsOptions));
-// app.use(bodyParser.json());
+function handleClientCandidate(socket: Socket, data: any, callback: Function) {
 
-// app.listen(http_port, () => {
-//     console.log(`HTTP server listening on port ${http_port}!`);
-// });
+    return callback({ ok: true, data: null });
+}
 
-// // Test endpoint
-// app.get("/", async (req: Request, res: Response) => {
-//     return res.status(200).json({ ok: true, data: "Hello world!" });
-// });
+function handleDisconnect(socket: Socket) {
+    const lobbyInfo = hostMap.get(socket.id);
 
-// // Serve lobby info
-// app.get("/lobby/:id", async (req: Request, res: Response) => {
-//     const {id} = req.params;
+    if(lobbyInfo == null)
+        return;
 
-//     if(!lobbyMap.has(id))
-//         return res.status(200).json({ ok: true, data: null });
+    // TODO: persist lobbies on host disconnect
+    // Handle host disconnect
+    console.log(`Host disconnected, removing lobby. [host=${socket.id}] [lobby=${lobbyInfo.id}]`);
 
-//     return res.status(200).json({ ok: true, data: lobbyMap.get(id) });
-// });
+    hostMap.delete(socket.id);
+    lobbyMap.delete(lobbyInfo.id);
+}
 
-// // Create new lobby by submitting a session description
-// app.post("/lobby/create", async (req: Request, res: Response) => {
-//     const { title, sessionDescription } = req.body;
+/*** Connection Types ***/
 
-//     console.log(title, sessionDescription);
+type LobbyId = string;
 
-//     if(lobbyMap.has(title))
-//         return res.status(500).json({ ok: false, data: "Lobby already exists." });
+interface RTCInfo {
+    sessionDescription: {
+        type: string;
+        sdp: string;
+    };
+    candidates: Array<{
+        candidate: string;
+        sdpMid: string;
+        sdpMLineIndex: number;
+        usernameFragment: string;
+    }>;
+}
 
-//     lobbyMap.set(title, {
-//         "name": title,
-//         "host": {
-//             "sessionDescription": sessionDescription,
-//             "candidates": []
-//         }
-//     });
-
-//     return res.status(200).json({ ok: true, data: null });
-// });
-
-// // Add candidates to lobby
-// app.post("/lobby/:id/candidates", async (req: Request, res: Response) => {
-//     const {id} = req.params;
-//     const data = req.body;
-
-//     console.log(data);
-
-//     return res.status(200).json({ ok: true, data: "nice" });
-// });
+interface LobbyInfo {
+    id: LobbyId;
+    clientCount: number;
+    hostSocket: Socket;
+    clientSockets: Array<Socket>;   // Actively connecting sockets, removed after signaling ends
+}
 
 /*** Test lobby information ***/
 
-const lobbyMap = new Map();
-
-lobbyMap.set("abc123", {
-    "name": "Test Lobby",
-    "host": {
-        "sessionDescription": {
-            "type": "offer",
-            "sdp": "v=0\r\no=- 850867386561808716 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=extmap-allow-mixed\r\na=msid-semantic: WMS\r\n"
-        },
-        "candidates": [
-            {
-                "candidate": "candidate:2516483527 1 udp 16785407 216.39.253.22 63069 typ relay raddr 73.45.219.31 rport 50740 generation 0 ufrag d4GO network-cost 999",
-                "sdpMid":"0",
-                "sdpMLineIndex":0,
-                "usernameFragment":"d4GO"
-            },
-            {
-                "candidate":"candidate:2516483527 1 udp 16785919 216.39.253.22 53925 typ relay raddr 73.45.219.31 rport 56110 generation 0 ufrag d4GO network-cost 999",
-                "sdpMid":"0",
-                "sdpMLineIndex":0,
-                "usernameFragment":"d4GO"
-            }
-        ]
-    }
-});
+const clientMap = new Map<SocketId, LobbyInfo>();   // Maps socket ids to lobby info
+const hostMap = new Map<SocketId, LobbyInfo>();     // Maps socket ids to lobby info
+const lobbyMap = new Map<LobbyId, LobbyInfo>();     // Maps lobby names to lobby info

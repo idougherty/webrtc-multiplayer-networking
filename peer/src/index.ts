@@ -1,5 +1,6 @@
-import { HostPeer } from './host_peer'
-import { ClientPeer } from './client_peer'
+import { ClientSignaler } from './client_signaler'
+import { Lobby } from './lobby';
+import { SignalerError } from './signaler_error';
 
 let newLobbyTitle = document.getElementById("create-lobby-title") as HTMLInputElement;
 let newLobbyBtn = document.getElementById("create-lobby-btn") as HTMLButtonElement;
@@ -7,29 +8,45 @@ let newLobbyBtn = document.getElementById("create-lobby-btn") as HTMLButtonEleme
 let joinLobbyTitle = document.getElementById("join-lobby-title") as HTMLInputElement;
 let joinLobbyBtn = document.getElementById("join-lobby-btn") as HTMLButtonElement;
 
-let hostPeer: HostPeer;
-let clientPeer: ClientPeer;
+let lobby: Lobby;
+let clientSignaler: ClientSignaler;
 
 newLobbyBtn.addEventListener("click", async e => {
-    if(hostPeer != null)
-        throw new Error("Lobby already created");
 
-    let lobbyName = newLobbyTitle.value;
-    console.log(`Creating lobby ${lobbyName}`);
+    if(lobby != null)
+        throw new Error("Lobby already created.");
 
-    hostPeer = new HostPeer();
-    await hostPeer.init();
-    await hostPeer.createLobby(lobbyName);
+    let lobbyId = newLobbyTitle.value;
+    console.log(`Creating lobby '${lobbyId}'.`);
+
+    lobby = new Lobby(lobbyId);
+
+    try {
+        await lobby.init((c: RTCPeerConnection) => console.log(c))
+    } catch (e) {
+        if(e instanceof SignalerError) {
+            alert(e.message);
+        }
+    }
+
 });
 
 joinLobbyBtn.addEventListener("click", async e => {
-    if(clientPeer != null)
-        throw new Error("Already in a lobby");
 
-    let lobbyName = joinLobbyTitle.value;
-    console.log(`Joining lobby ${lobbyName}`);
+    if(clientSignaler != null)
+        throw new Error("Already in a lobby.");
 
-    clientPeer = new ClientPeer();
-    await clientPeer.init();
-    await clientPeer.joinLobby(lobbyName);
+    let lobbyId = joinLobbyTitle.value;
+    console.log(`Joining lobby '${lobbyId}'.`);
+
+    clientSignaler = new ClientSignaler();
+
+    try {
+        await clientSignaler.init(lobbyId, (c: RTCPeerConnection) => console.log(c))
+    } catch (e) {
+        if(e instanceof SignalerError) {
+            alert(e.message);
+        }
+    }
+
 });

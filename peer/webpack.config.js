@@ -20,14 +20,8 @@ module.exports = {
     path: path.resolve(__dirname, 'build'),
   },
   devServer: {
-    // path: path.join(__dirname),
-    // publicPath: './',
-    // static: {
-    //   directory: path.join(__dirname, 'public'),
-    // },
-    // contentBase: "./",
     watchFiles: ['src/**'],
-    compress: true,
+    compress: false,
     port: 8080,
   },
 };
