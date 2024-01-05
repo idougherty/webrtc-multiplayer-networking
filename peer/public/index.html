@@ -6,9 +6,18 @@
 </head>
 <body>
     <h1>P2P Browser Networking!</h1>
-    <input id="create-lobby-title" type="text"/>
-    <button id="create-lobby-btn">Create lobby!</button>
+    <label>Lobby Name:</label>
+    <input id="lobby-title" type="text"/>
     <br/>
-    <input id="join-lobby-title" type="text"/>
+    <button id="create-lobby-btn">Create lobby!</button>
     <button id="join-lobby-btn">Join lobby!</button>
+    <br/>
+    <br/>
+    <label>Status:
+        <span id="connection-status">Not connected</span>
+    </label>
+    <br/>
+    <label>Last Message:
+        <span id="last-message"></span>
+    </label>
 </body>
