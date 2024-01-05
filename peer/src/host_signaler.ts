@@ -34,12 +34,11 @@ export class HostSignaler {
 
         // Connect to matching server
         this.matchingServer = io(this.matchingServerAddr);
+        this.matchingServer.on("client offer", (d, c) => this.handleOffer(d, c));
+        this.matchingServer.on("client candidate", d => this.handleCandidate(d));
         this.matchingServer.on("connect_error", (err) => {
           console.log(`connect_error due to ${err.message}`);
         });
-        console.log(this.matchingServer)
-        this.matchingServer.on("client offer", (d, c) => this.handleOffer(d, c));
-        this.matchingServer.on("client candidate", d => this.handleCandidate(d));
 
     }
 
@@ -73,14 +72,14 @@ export class HostSignaler {
         await pc.setRemoteDescription(sessionDescription);
         await pc.setLocalDescription();
 
+        const response = { sessionDescription: pc.localDescription?.toJSON() };
+        callback({ ok: true, data: response });
+
         // Fetch the TURN server credentials
         // ICE candidates are discovered after this step
         const iceServers = await fetch(this.turnServerAddr);
         const config = { iceServers: await iceServers.json() };
         pc.setConfiguration(config);
-
-        const response = { sessionDescription: pc.localDescription?.toJSON() };
-        return callback({ ok: true, data: response });
     }
 
     private async handleCandidate(data: any) {

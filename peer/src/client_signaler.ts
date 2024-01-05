@@ -76,6 +76,7 @@ export class ClientSignaler {
         // ICE candidates are discovered after this step
         const iceServers = await fetch(this.turnServerAddr);
         const config = { iceServers: await iceServers.json() };
+        console.log(config)
         this.pc.setConfiguration(config);
 
     }
