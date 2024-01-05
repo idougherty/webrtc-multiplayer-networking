@@ -1,5 +1,4 @@
 import { Socket, io } from "socket.io-client";
-import { CONFIG } from "./conf";
 import { SignalerError } from "./signaler_error";
 
 export class ClientSignaler {
@@ -18,8 +17,8 @@ export class ClientSignaler {
         this.pc = new RTCPeerConnection();
 
         // Load server addresses from config
-        this.turnServerAddr = CONFIG.TURN_SERVER;
-        this.matchingServerAddr = CONFIG.MATCHING_SERVER;
+        this.turnServerAddr = process.env.TURN_SERVER ?? "";
+        this.matchingServerAddr = process.env.MATCHING_SERVER ?? "";
 
         // Connect to matching server
         this.matchingServer = io(this.matchingServerAddr);

@@ -11,8 +11,7 @@ const port = parseInt(process.env.PORT ?? "8181");
 
 const io = new Server(port, {
     cors: {
-        // TODO: enable only through dev environment
-        origin: "http://localhost:8080"
+        origin: process.env.ALLOWED_CLIENT,
     }
 });
 

@@ -2,12 +2,16 @@ import { ClientSignaler } from './client_signaler';
 import { Lobby } from './lobby';
 import { SignalerError } from './signaler_error';
 
+/*** Get references to DOM elements ***/
+
 let lobbyTitle = document.getElementById("lobby-title") as HTMLInputElement;
 let newLobbyBtn = document.getElementById("create-lobby-btn") as HTMLButtonElement;
 let joinLobbyBtn = document.getElementById("join-lobby-btn") as HTMLButtonElement;
 
 let statusText = document.getElementById("connection-status") as HTMLParagraphElement;
 let lastMessage = document.getElementById("last-message") as HTMLParagraphElement;
+
+/*** Demo setup ***/
 
 let lobby: Lobby;
 let clientSignaler: ClientSignaler;
