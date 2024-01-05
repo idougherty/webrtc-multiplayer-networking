@@ -11,6 +11,17 @@ let joinLobbyBtn = document.getElementById("join-lobby-btn") as HTMLButtonElemen
 let lobby: Lobby;
 let clientSignaler: ClientSignaler;
 
+let hostChannel: RTCDataChannel | null = null;
+let clientChannel: RTCDataChannel | null = null;
+
+document.addEventListener("keypress", e => {
+    let channel = hostChannel ?? clientChannel;
+    if(channel == null) return;
+    console.log(`sending: ${e.key}`);
+    console.log(channel.readyState)
+    channel.send(e.key);
+})
+
 newLobbyBtn.addEventListener("click", async e => {
 
     if(lobby != null)
@@ -22,7 +33,14 @@ newLobbyBtn.addEventListener("click", async e => {
     lobby = new Lobby(lobbyId);
 
     try {
-        await lobby.init((c: RTCPeerConnection) => console.log(c))
+        const callback = (pc: RTCPeerConnection, dc: RTCDataChannel) => {
+            console.log("Data channel connected!");
+            dc.onmessage = e => console.log(`received: ${e.data}`);
+            dc.send("Message from host!");
+            hostChannel = dc;
+        };
+
+        await lobby.init(callback)
     } catch (e) {
         if(e instanceof SignalerError) {
             alert(e.message);
@@ -42,7 +60,14 @@ joinLobbyBtn.addEventListener("click", async e => {
     clientSignaler = new ClientSignaler();
 
     try {
-        await clientSignaler.init(lobbyId, (c: RTCPeerConnection) => console.log(c))
+        clientSignaler.onclient = (pc: RTCPeerConnection, dc: RTCDataChannel) => {
+            console.log("Data channel connected!");
+            dc.onmessage = e => console.log(`received: ${e.data}`);
+            dc.send("Message from client!");
+            clientChannel = dc;
+        };
+
+        await clientSignaler.init(lobbyId)
     } catch (e) {
         if(e instanceof SignalerError) {
             alert(e.message);

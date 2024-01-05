@@ -60,7 +60,7 @@ function createLobby(socket: Socket, data: any, callback: Function) {
         id: lobbyId,
         clientCount: 0,
         hostSocket: socket,
-        clientSockets: [],
+        clientSockets: new Map(),
     };
 
     hostMap.set(socket.id, lobbyInfo);
@@ -69,30 +69,28 @@ function createLobby(socket: Socket, data: any, callback: Function) {
     return callback({ ok: true, data: null });
 }
 
-// Stores new ice candidates and broadcasts them to currently connecting clients
 function handleHostCandidate(socket: Socket, data: any, callback: Function) {
-    return callback({ ok: false, data: "Not implemented." });
 
-    // const { candidate } = data;
-    // const lobbyInfo = hostMap.get(socket.id);
+    let { clientId, candidate } = data;
+    let lobbyInfo = hostMap.get(socket.id);
+    let client = lobbyInfo?.clientSockets.get(clientId);
+
+    console.log(`Host candidate proposed. [client=${socket.id}]`);
+
+    if(clientId == null || candidate == null) {
+        console.warn(`Bad request in 'host candidate'.`)
+        return callback({ ok: false, data: "Bad request." });
+    }
+
+    if(lobbyInfo == null || client == null) {
+        console.warn(`Bad request in 'host candidate'.`)
+        return callback({ ok: false, data: "No lobby associated with host." });
+    }
     
-    // console.log(`Adding new ice candidate. [host=${socket.id}] [lobby=${lobbyInfo?.id}]`);
+    client.emit("host candidate", { candidate });
 
-    // if(candidate == null) {
-    //     console.warn(`Bad request in 'add candidate'.`)
-    //     return callback({ ok: false, data: "Bad request." });
-    // }
+    return callback({ ok: true, data: null });
 
-    // if(lobbyInfo == null) {
-    //     console.warn(`Bad request in 'add candidate'.`)
-    //     return callback({ ok: false, data: "No lobby associated with this socket." });
-    // }
-
-    // // Broadcast candidate to currently connecting clients
-    // for(const client of lobbyInfo.clientSockets)
-    //     client.emit("add candidate", candidate);
-
-    // return callback({ ok: true, data: null });
 }
 
 async function handleClientOffer(socket: Socket, data: any, callback: Function) {
@@ -118,19 +116,41 @@ async function handleClientOffer(socket: Socket, data: any, callback: Function) 
     }
 
     clientMap.set(socket.id, lobbyInfo);
+    lobbyInfo.clientSockets.set(socket.id, socket);
 
-    const request = { socketId: socket.id, sessionDescription };
+    const request = { clientId: socket.id, sessionDescription };
     const response = await lobbyInfo.hostSocket.emitWithAck("client offer", request);
 
     return callback(response);
+
 }
 
 function handleClientCandidate(socket: Socket, data: any, callback: Function) {
 
+    let { candidate } = data;
+    let lobbyInfo = clientMap.get(socket.id);
+
+    console.log(`Client candidate proposed. [client=${socket.id}]`);
+
+    if(candidate == null) {
+        console.warn(`Bad request in 'client candidate'.`)
+        return callback({ ok: false, data: "Bad request." });
+    }
+
+    if(lobbyInfo == null) {
+        console.warn(`Bad request in 'client candidate'.`)
+        return callback({ ok: false, data: "No lobby associated with client." });
+    }
+
+    const request = { clientId: socket.id, candidate };
+    lobbyInfo.hostSocket.emit("client candidate", request);
+
     return callback({ ok: true, data: null });
+
 }
 
 function handleDisconnect(socket: Socket) {
+
     const lobbyInfo = hostMap.get(socket.id);
 
     if(lobbyInfo == null)
@@ -142,30 +162,18 @@ function handleDisconnect(socket: Socket) {
 
     hostMap.delete(socket.id);
     lobbyMap.delete(lobbyInfo.id);
+
 }
 
 /*** Connection Types ***/
 
 type LobbyId = string;
 
-interface RTCInfo {
-    sessionDescription: {
-        type: string;
-        sdp: string;
-    };
-    candidates: Array<{
-        candidate: string;
-        sdpMid: string;
-        sdpMLineIndex: number;
-        usernameFragment: string;
-    }>;
-}
-
 interface LobbyInfo {
     id: LobbyId;
     clientCount: number;
     hostSocket: Socket;
-    clientSockets: Array<Socket>;   // Actively connecting sockets, removed after signaling ends
+    clientSockets: Map<SocketId, Socket>;   // Actively connecting sockets, removed after signaling ends
 }
 
 /*** Test lobby information ***/

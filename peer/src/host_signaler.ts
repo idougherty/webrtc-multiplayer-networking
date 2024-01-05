@@ -16,7 +16,7 @@ type ClientId = string;
 ***/
 export class HostSignaler {
 
-    private onclient: Function; // TODO: look into creating an event listener system
+    public onclient: Function; // TODO: look into creating an event listener system
     private pendingConnections: Map<ClientId, RTCPeerConnection>;
 
     private turnServerAddr: string;
@@ -35,58 +35,88 @@ export class HostSignaler {
 
         // Connect to matching server
         this.matchingServer = io(this.matchingServerAddr);
-        this.matchingServer.on("client offer", this.handleOffer);
-        this.matchingServer.on("client candidate", this.handleCandidate);
+        this.matchingServer.on("client offer", (d, c) => this.handleOffer(d, c));
+        this.matchingServer.on("client candidate", d => this.handleCandidate(d));
 
     }
 
     // Exposes host to matching server
-    public async init(lobbyId: string, clientCallback: Function) {
-
-        this.onclient = clientCallback;
+    public async init(lobbyId: string) {
 
         const request = { lobbyId };
         const response = await this.matchingServer.emitWithAck("init host", request);
 
         if(!response.ok)
             throw new SignalerError(response.data);
+
     }
 
     private async handleOffer(data: any, callback: Function) {
         
-        const { socketId, sessionDescription } = data;
+        const { clientId, sessionDescription } = data;
         
-        console.log(`Received client offer. [client=${socketId}]`);
+        console.log(`Received client offer. [client=${clientId}]`);
 
-        if(socketId == null || sessionDescription == null) {
+        if(clientId == null || sessionDescription == null) {
             console.warn("Bad request in 'client offer'");
             return callback({ ok: false, data: "Bad request." });
         }
 
         const pc = new RTCPeerConnection();
-        this.pendingConnections.set(socketId, pc);
+        this.pendingConnections.set(clientId, pc);
         
-        // TODO: error handling here?
-        this.initConnection(pc);
+        // TODO: is error handling necessary here?
+        this.initConnection(clientId, pc);
         await pc.setRemoteDescription(sessionDescription);
         await pc.setLocalDescription();
-        
-        return callback({ ok: true, data: pc.localDescription?.toJSON() });
+
+        const response = { sessionDescription: pc.localDescription?.toJSON() };
+        return callback({ ok: true, data: response });
     }
 
-    private initConnection(pc: RTCPeerConnection) {
+    private async handleCandidate(data: any) {
 
-        // TODO: figure out options
-        pc.createDataChannel("data-channel", { negotiated: true, id: 0 });
+        const { clientId, candidate } = data;
+        const pc = this.pendingConnections.get(clientId);
 
-        // Create lobby initiates connection negotiation
-        // pc.onnegotiationneeded = e => submitOffer(lobbyId);
+        console.log(`Received client candidate. [client=${clientId}]`);
+        console.log(candidate);
+
+        if(candidate == null || pc == null)
+            return;
+
+        await pc.addIceCandidate(candidate);
+        
+    }
+
+    private async submitCandidate(clientId: string, candidate: RTCIceCandidate | null) {
+        
+        console.log("Submitting new ICE candidate.", candidate);
+        
+        if(candidate == null)
+            return;
+    
+        const request = { clientId, candidate: candidate.toJSON() };
+        const response = await this.matchingServer.emitWithAck("host candidate", request);
+
+        if(!response.ok)
+            throw new SignalerError(response.data);
+
+    }
+
+    private initConnection(clientId: string, pc: RTCPeerConnection) {
+
+        // Initialize data channel
+        const dc = pc.createDataChannel("data-channel", { negotiated: true, id: 0 });
+        dc.onopen = e => this.dataChannelOpen(clientId, pc, dc);
 
         // Handle ICE candidate events
-        pc.onicecandidate = ({ candidate }) => this.submitCandidate(candidate);
+        pc.onicecandidate = ({ candidate }) => this.submitCandidate(clientId, candidate);
         pc.onicecandidateerror = e => console.warn(e);
 
-        // Other events
+        // Handle connection changes
+        // pc.onconnectionstatechange = e => this.connectionStateChange(e, pc);
+        
         // TODO: remove after debugging
         pc.onconnectionstatechange = e => console.log(e);
         pc.oniceconnectionstatechange = e => console.log(e);
@@ -95,25 +125,10 @@ export class HostSignaler {
 
     }
 
-    private async submitAnswer() {
-        
-    }
+    private dataChannelOpen(clientId: string, pc: RTCPeerConnection, dc: RTCDataChannel) {
 
-    private handleCandidate(data: any, callback: Function) {
-
-    }
-
-    private async submitCandidate(candidate: RTCIceCandidate | null) {
-        
-        console.log("Submitting new ice candidate.", candidate);
-        
-        if(candidate == null)
-            return;
-    
-        const response = await this.matchingServer.emitWithAck("host candidate", candidate.toJSON());
-
-        if(!response.ok)
-            throw new SignalerError(response.data);
+        this.pendingConnections.delete(clientId);
+        this.onclient(pc, dc);
 
     }
     

@@ -23,14 +23,16 @@ export class Lobby {
 
     public async init(clientCallback: Function) {
 
-        const callback = (client: RTCPeerConnection) => this.addNewClient(client, clientCallback);
-        await this.signaler.init(this.lobbyId, callback);
+        const callback = (pc: RTCPeerConnection, dc: RTCDataChannel) => this.addNewClient(pc, dc, clientCallback);
+        this.signaler.onclient = callback;
+
+        await this.signaler.init(this.lobbyId);
 
     }
 
-    private addNewClient(client: RTCPeerConnection, clientCallback: Function) {
-        this.clients.push(client);
-        clientCallback(client);
+    private addNewClient(pc: RTCPeerConnection, dc: RTCDataChannel, clientCallback: Function) {
+        this.clients.push(pc);
+        clientCallback(pc, dc);
     }
 
     public broadcast(data: any) {

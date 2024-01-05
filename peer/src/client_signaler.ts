@@ -4,7 +4,7 @@ import { SignalerError } from "./signaler_error";
 
 export class ClientSignaler {
 
-    private onclient: Function; // TODO: look into creating an event listener system
+    public onclient: Function; // TODO: look into creating an event listener system
     private pc: RTCPeerConnection;
 
     private turnServerAddr: string;
@@ -23,16 +23,15 @@ export class ClientSignaler {
 
         // Connect to matching server
         this.matchingServer = io(this.matchingServerAddr);
-        this.matchingServer.on("host candidate", this.handleCandidate);
+        this.matchingServer.on("host candidate", d => this.handleCandidate(d));
 
     }
 
-    public async init(lobbyId: string, clientCallback: Function) {
+    public async init(lobbyId: string) {
 
-        this.onclient = clientCallback;
-        
-        // TODO: figure out options
-        this.pc.createDataChannel("data-channel", { negotiated: true, id: 0 });
+        // Initialize data channel
+        const dc = this.pc.createDataChannel("data-channel", { negotiated: true, id: 0 });
+        dc.onopen = e => this.dataChannelOpen(dc);
 
         // Create lobby initiates connection negotiation
         this.pc.onnegotiationneeded = e => this.submitOffer(lobbyId);
@@ -52,6 +51,8 @@ export class ClientSignaler {
 
     private async submitOffer(lobbyId: string) {
 
+        console.log(`Submitting client offer. [lobby=${lobbyId}]`);
+
         // Create local session description
         const offer = await this.pc.createOffer();
         await this.pc.setLocalDescription(offer);
@@ -67,38 +68,54 @@ export class ClientSignaler {
         if(!response.ok)
             throw new SignalerError(response.data);
 
+        console.log(`Received host answer. [lobby=${lobbyId}]`);
+
+        const { sessionDescription } = response.data;
+        await this.pc.setRemoteDescription(sessionDescription);
+
         // Fetch the TURN server credentials
         // ICE candidates are discovered after this step
         const iceServers = await fetch(this.turnServerAddr);
         const config = { iceServers: await iceServers.json() };
         this.pc.setConfiguration(config);
 
-        this.handleAnswer(response.data);
-    }
-
-    private handleAnswer(data: any) {
-        console.log(data);
     }
 
     private async submitCandidate(candidate: RTCIceCandidate | null) {
         
-        console.log("Submitting new ice candidate.", candidate);
+        console.log("Submitting new ICE candidate.", candidate);
         
         if(candidate == null)
             return;
     
-        const response = await this.matchingServer.emitWithAck("host candidate", candidate.toJSON());
+        const request = { candidate: candidate.toJSON() };
+        const response = await this.matchingServer.emitWithAck("client candidate", request);
 
         if(!response.ok)
             throw new SignalerError(response.data);
 
     }
 
-    private handleCandidate(data: any, callback: Function) {
+    private async handleCandidate(data: any) {
+
+        const { candidate } = data;
+
+        console.log(`Received host candidate.`);
+        console.log(candidate);
+        console.log(this.pc.remoteDescription);
+
+        if(candidate == null)
+            return;
+
+        await this.pc.addIceCandidate(candidate);
 
     }
 
-    public remove() {
+    private dataChannelOpen(dc: RTCDataChannel) {
+
         this.matchingServer.disconnect();
+        this.onclient(this.pc, dc);
+
     }
+
 }
