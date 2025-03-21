@@ -87,8 +87,7 @@ export class HostSignaler {
         const { clientId, candidate } = data;
         const pc = this.pendingConnections.get(clientId);
 
-        console.log(`Received client candidate. [client=${clientId}]`);
-        console.log(candidate);
+        console.log(`Received client candidate. [client=${clientId}]`, candidate);
 
         if(candidate == null || pc == null)
             return;

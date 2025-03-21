@@ -100,9 +100,7 @@ export class ClientSignaler {
 
         const { candidate } = data;
 
-        console.log(`Received host candidate.`);
-        console.log(candidate);
-        console.log(this.pc.remoteDescription);
+        console.log(`Received host candidate.`, candidate);
 
         if(candidate == null)
             return;
